@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 from crewai import Crew, Flow
 from crewai.flow.flow import listen, start
@@ -9,6 +10,13 @@ import streamlit as st
 
 load_dotenv()
 
+
+def _state(key: str) -> str:
+    """Read a string input from Streamlit session state, always returning a str."""
+    value = st.session_state.get(key)
+    return value if isinstance(value, str) else ""
+
+
 class MarketResearchAssistant(Flow):
     @start()
     def get_product_narsi_info(self):  
@@ -17,7 +25,7 @@ class MarketResearchAssistant(Flow):
             tasks=[product_research_task]
         )
 
-        my_product = st.session_state.get("my_product")
+        my_product = _state("my_product")
         result = product_research_crew.kickoff(inputs={"my_product": my_product})
         return result
     
@@ -28,9 +36,9 @@ class MarketResearchAssistant(Flow):
             tasks=[competitor_research_task]
         )
 
-        my_product = st.session_state.get("my_product")
-        competitor1 = st.session_state.get("competitor1")
-        competitor2 = st.session_state.get("competitor2") 
+        my_product = _state("my_product")
+        competitor1 = _state("competitor1")
+        competitor2 = _state("competitor2") 
 
         result = competitor_research_crew.kickoff(inputs={"my_product": my_product, "competitor1": competitor1, "competitor2": competitor2})
         return result
@@ -42,13 +50,20 @@ class MarketResearchAssistant(Flow):
             tasks=[comparison_research_task]
         )
 
-        competitor1 = st.session_state.get("competitor1")
-        competitor2 = st.session_state.get("competitor2")
+        competitor1 = _state("competitor1")
+        competitor2 = _state("competitor2")
 
         result = comparison_research_crew.kickoff(inputs={"competitor1": competitor1, "competitor2": competitor2})
         return result
 
 if __name__ == "__main__":
+    # CLI use: python crew_flow.py [my_product] [competitor1] [competitor2]
+    # Values fall back to env vars, then to placeholder strings. The tools read
+    # st.session_state, so seed it with the same strings.
+    defaults = {"my_product": "MY_PRODUCT", "competitor1": "COMPETITOR1", "competitor2": "COMPETITOR2"}
+    for idx, key in enumerate(defaults, start=1):
+        value = sys.argv[idx] if len(sys.argv) > idx else os.getenv(key.upper(), defaults[key])
+        st.session_state[key] = str(value)
     flow = MarketResearchAssistant()
-    result = flow.kickoff()  
+    result = flow.kickoff()
     print(result)
