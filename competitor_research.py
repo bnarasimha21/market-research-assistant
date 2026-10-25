@@ -3,7 +3,7 @@ from openai import OpenAI
 from crewai_tools import ScrapeWebsiteTool
 from pydantic import BaseModel, Field
 from crewai.tools import tool
-import streamlit as st
+from inputs import get_input
 import os
 
 @tool("Competitor Research Tool")
@@ -27,8 +27,8 @@ def CompetitorResearchTool() -> str:
         api_key = agent_key,
     )
 
-    competitor1 = st.session_state.get("competitor1")
-    competitor2 = st.session_state.get("competitor2") 
+    competitor1 = get_input("competitor1")
+    competitor2 = get_input("competitor2")
 
     # The model name below is only a request parameter. The model that actually answers
     # is the one configured on the hosted GenAI agent behind this endpoint.

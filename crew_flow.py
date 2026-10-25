@@ -6,15 +6,14 @@ from crewai.flow.flow import listen, start
 from product_research import product_researcher, product_research_task
 from competitor_research import competitor_analyst, competitor_research_task
 from comparison_report import comparison_analyst, comparison_research_task
-import streamlit as st
+from inputs import INPUTS, get_input
 
 load_dotenv()
 
 
 def _state(key: str) -> str:
-    """Read a string input from Streamlit session state, always returning a str."""
-    value = st.session_state.get(key)
-    return value if isinstance(value, str) else ""
+    """Read a string input (Streamlit session state first, then the CLI dict)."""
+    return get_input(key)
 
 
 class MarketResearchAssistant(Flow):
@@ -58,12 +57,12 @@ class MarketResearchAssistant(Flow):
 
 if __name__ == "__main__":
     # CLI use: python crew_flow.py [my_product] [competitor1] [competitor2]
-    # Values fall back to env vars, then to placeholder strings. The tools read
-    # st.session_state, so seed it with the same strings.
+    # Values fall back to env vars, then to placeholder strings. session_state does not
+    # persist in bare mode, so the flow and the tools read these from inputs.INPUTS.
     defaults = {"my_product": "MY_PRODUCT", "competitor1": "COMPETITOR1", "competitor2": "COMPETITOR2"}
     for idx, key in enumerate(defaults, start=1):
         value = sys.argv[idx] if len(sys.argv) > idx else os.getenv(key.upper(), defaults[key])
-        st.session_state[key] = str(value)
+        INPUTS[key] = str(value)
     flow = MarketResearchAssistant()
     result = flow.kickoff()
     print(result)
