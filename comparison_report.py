@@ -8,17 +8,19 @@ from openai import OpenAI
 from competitor_research import competitor_research_task
 from product_research import product_research_task
 
-competitor1 = st.session_state.get("competitor1")
-competitor2 = st.session_state.get("competitor2") 
+# Note: this module is imported before the user clicks "Generate Comparison", so
+# st.session_state has no competitor names yet (they would be None here). The
+# competitor names are therefore supplied at run time through crew inputs
+# ({competitor1} / {competitor2} placeholders), never at import time.
 
 class Comparison(BaseModel):
     Category: str = Field(..., description="Category of the comparison")
     My_Product: str = Field(..., description="Summary of My Product on the category")
-    Competitor1: str = Field(..., description=f"Summary of {competitor1} on the category")
-    Competitor2: str = Field(..., description=f"Summary of {competitor2} on the category")
+    Competitor1: str = Field(..., description="Summary of the first competitor on the category")
+    Competitor2: str = Field(..., description="Summary of the second competitor on the category")
 
 class ComparisonList(BaseModel):
-    comparisons: List[Comparison] = Field(..., description=f"List of comparisons between My Product and {competitor1} and {competitor2}")
+    comparisons: List[Comparison] = Field(..., description="List of comparisons between My Product and the two competitors")
 
 
 @tool("Comparision Report Tool")
@@ -42,6 +44,8 @@ def ComparisionReportTool() -> str:
         api_key = agent_key,
     )
 
+    # The model name below is only a request parameter. The model that actually answers
+    # is the one configured on the hosted GenAI agent behind this endpoint.
     response = client.chat.completions.create(
         model = "DeepSeek R1 Distill Llama 70B",
         messages = [{"role": "user", "content": f"""You are an expert Comparison Report Generator. Your goal is to generate a detailed comparison report between my product and competitors."""}],
@@ -51,8 +55,7 @@ def ComparisionReportTool() -> str:
 
 comparison_analyst = Agent(
             role="Comparison Report Generator",
-            goal=f"""Compare My Product and {competitor1} and {competitor2}.
-""",
+            goal="Compare My Product and {competitor1} and {competitor2}.",
             backstory="Expert at analyzing product features and capabilities using AI platforms. You have information about my product and competitors",
             tools=[ComparisionReportTool],
             verbose=True

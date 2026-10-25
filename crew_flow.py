@@ -17,7 +17,8 @@ class MarketResearchAssistant(Flow):
             tasks=[product_research_task]
         )
 
-        result = product_research_crew.kickoff()
+        my_product = st.session_state.get("my_product")
+        result = product_research_crew.kickoff(inputs={"my_product": my_product})
         return result
     
     @listen(get_product_narsi_info)
@@ -41,7 +42,10 @@ class MarketResearchAssistant(Flow):
             tasks=[comparison_research_task]
         )
 
-        result = comparison_research_crew.kickoff()
+        competitor1 = st.session_state.get("competitor1")
+        competitor2 = st.session_state.get("competitor2")
+
+        result = comparison_research_crew.kickoff(inputs={"competitor1": competitor1, "competitor2": competitor2})
         return result
 
 if __name__ == "__main__":

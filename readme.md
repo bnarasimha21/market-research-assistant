@@ -54,6 +54,8 @@ pip install -r requirements.txt
 - Update the following variables from previous step:
 
 ``` bash
+OPENAI_API_KEY=<your-openai-api-key>
+
 GENAI_PRODUCT_RESEARCHER_AGENT_ENDPOINT=<your-agent-endpoint>
 GENAI_PRODUCT_RESEARCHER_AGENT_KEY=<your-agent-key>
 
@@ -64,13 +66,17 @@ GENAI_COMPARISON_REPORT_AGENT_ENDPOINT=<your-agent-endpoint>
 GENAI_COMPARISON_REPORT_AGENT_KEY=<your-agent-key>
 ```
 
-4. Run the application:
+`OPENAI_API_KEY` is used by CrewAI's default LLM, which drives the three CrewAI agents. The `GENAI_*` endpoints and keys are used by the tools those agents call. Each tool sends the model name "DeepSeek R1 Distill Llama 70B" as a request parameter only; the model that actually answers is whatever you configured on the hosted GenAI agent behind that endpoint.
+
+Product and competitor names are not known when the modules are imported. They are read from the Streamlit inputs when you click "Generate Comparison" and passed into the crews as inputs.
+
+7. Run the application:
 
 ``` bash
 streamlit run app.py
 ```
 
-5. Open your browser and navigate to `http://localhost:8501`
+8. Open your browser and navigate to `http://localhost:8501`
 
 
 ## Project Structure

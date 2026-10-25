@@ -5,8 +5,6 @@ from pydantic import BaseModel, Field
 import os
 import streamlit as st
 
-my_product = st.session_state.get("my_product")
-
 @tool("Product Research Tool")
 def ProductResearchTool(my_product: str) -> str:
     """
@@ -26,6 +24,8 @@ def ProductResearchTool(my_product: str) -> str:
         api_key = agent_key,
     )
 
+    # The model name below is only a request parameter. The model that actually answers
+    # is the one configured on the hosted GenAI agent behind this endpoint.
     response = client.chat.completions.create(
         model = "DeepSeek R1 Distill Llama 70B",
         messages = [{"role": "user", "content": f"You are an expert Product Researcher.  You are expert at analyzing product features and capabilities using AI platforms. Your task is to Research and gather detailed information about {my_product} whose details will be available to you."}],
@@ -38,7 +38,7 @@ product_researcher = Agent(
     role="Product Researcher",
     goal="Conduct comprehensive research to gather in-depth information about {my_product}, focusing on its features and capabilities.",
     backstory="A seasoned expert in product analysis, leveraging advanced AI platforms to extract and synthesize detailed insights.",
-    abilities=[ProductResearchTool],
+    tools=[ProductResearchTool],
     verbose=True
 )
 
