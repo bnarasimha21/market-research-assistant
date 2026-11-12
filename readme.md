@@ -87,10 +87,10 @@ Results are committed under `evals/results/`:
   the same run with one fixture's quote deliberately mangled, demonstrating
   that the grounding-rate metric actually detects a broken fixture.
 
-`--llm do_serverless` / `--llm claude_cli` run the same trios against a real
-provider for real quality numbers; these code paths exist and are correct but
-were never run with real credentials in this repository's history, so there
-is no committed real-model report yet.
+`--llm do_serverless` runs the same trios against a real provider for real
+quality numbers; this code path exists and is correct but was never run with
+real credentials in this repository's history, so there is no committed
+real-model report yet.
 
 ## Testing
 

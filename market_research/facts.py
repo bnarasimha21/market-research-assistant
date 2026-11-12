@@ -3,8 +3,9 @@
 Replaces sending one fixed sentence to a hosted GenAI agent and hoping it
 somehow knows about the product. The default source reads product_narsi.md
 directly and ranks its sections with BM25, offline, with no model call. A
-knowledge-base-backed source is available behind config for anyone who
-really has a DigitalOcean knowledge base set up.
+second, knowledge-base-labeled source is also available behind config, but
+it is experimental and not actually wired to a real knowledge base -- see
+DOKnowledgeBaseSource's docstring below for exactly what it does instead.
 """
 
 from __future__ import annotations
