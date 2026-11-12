@@ -18,6 +18,7 @@ private address.
 from __future__ import annotations
 
 import ipaddress
+import math
 import os
 import socket
 import time
@@ -354,40 +355,87 @@ def _quote_long_enough(quote: str) -> bool:
 
 
 def _substantive_tokens(text: str) -> set[str]:
+    """Lowercased, alnum-only tokens from `text`, excluding stopwords.
+
+    A purely-numeric token (e.g. "5" out of "$5") is kept regardless of
+    length, since a price or other number is exactly the kind of
+    discriminating content a generic sentence won't happen to share; it is
+    only short alphabetic tokens (a, it, by, ...) that are noise. All other
+    tokens must be at least MIN_SUBSTANTIVE_TOKEN_LEN characters.
+    """
     words = normalize_whitespace(text).lower().replace("-", " ").split()
     cleaned = ("".join(ch for ch in w if ch.isalnum()) for w in words)
-    return {w for w in cleaned if w and w not in _STOPWORDS and len(w) >= MIN_SUBSTANTIVE_TOKEN_LEN}
+    tokens: set[str] = set()
+    for w in cleaned:
+        if not w or w in _STOPWORDS:
+            continue
+        if w.isdigit() or len(w) >= MIN_SUBSTANTIVE_TOKEN_LEN:
+            tokens.add(w)
+    return tokens
 
 
-def _claim_and_quote_overlap(claim: str, quote: str) -> bool:
-    """True if `claim` and `quote` share enough real content that the quote
-    plausibly supports the claim, rather than merely existing somewhere on
-    the same page. Requires at least one shared substantive token, and at
-    least a third of the claim's substantive tokens to appear in the quote
-    (so "Acme Enterprise is $5 per seat" is not considered supported by an
-    unrelated quote that happens to also contain the word "Acme").
+def _claim_and_quote_overlap(claim: str, quote: str, entity_name: str = "") -> bool:
+    """True if `claim` and `quote` share enough real, specific content that
+    the quote plausibly supports the claim, rather than merely existing
+    somewhere on the same page.
+
+    entity_name (the product/competitor name the claim is about) is
+    excluded from both token sets before anything else is compared: it is
+    expected to appear in nearly every claim and quote about that entity,
+    so counting it toward "shared content" let an unrelated quote pass
+    just for mentioning the competitor's name (e.g. claim "Acme is free
+    forever and SOC2 certified" matched quote "Acme is a developer
+    platform for teams" on "Acme" alone).
+
+    If the claim contains any numeric token (a price, a seat count, a
+    percentage, ...), at least one of those numbers must also appear in
+    the quote: a claim about "$5 per seat" is not supported by a quote
+    that mentions pricing in the abstract but cites no number at all.
+
+    Beyond that, the overlap must cover at least half of the claim's
+    remaining substantive tokens (rounded up), so a quote that only
+    generically describes the entity does not satisfy a specific claim
+    about pricing, certification, or a named feature. This is deliberately
+    NOT floored at a fixed minimum like 2: a claim with only one
+    substantive token left after removing the entity name and stopwords
+    (e.g. claim "Acme is profitable", entity "Acme" -> just {"profitable"})
+    can never reach an overlap of 2 since its own token set has only 1
+    member, so a fixed floor above 1 would reject every such claim
+    outright regardless of how well the quote supports it.
     """
-    claim_tokens = _substantive_tokens(claim)
+    entity_tokens = _substantive_tokens(entity_name)
+    claim_tokens = _substantive_tokens(claim) - entity_tokens
     if not claim_tokens:
         return False
-    quote_tokens = _substantive_tokens(quote)
+    quote_tokens = _substantive_tokens(quote) - entity_tokens
+
+    claim_digit_tokens = {t for t in claim_tokens if t.isdigit()}
+    if claim_digit_tokens and not (claim_digit_tokens & quote_tokens):
+        return False
+
     overlap = claim_tokens & quote_tokens
     if not overlap:
         return False
-    required = max(1, len(claim_tokens) // 3)
+
+    required = max(1, math.ceil(len(claim_tokens) / 2))
     return len(overlap) >= required
 
 
-def is_claim_grounded(claim: str, quote: str, page_text: str) -> bool:
+def is_claim_grounded(claim: str, quote: str, page_text: str, entity_name: str = "") -> bool:
     """The full grounding check for one competitor claim: the quote must be
     long enough to be a real sentence fragment (not "e" or a single bare
     word), it must actually be a substring of the fetched page, and it must
-    share real content with the claim it is supposed to support (not just
-    happen to exist somewhere on the same page).
+    share real, specific content with the claim it is supposed to support
+    (not just happen to exist somewhere on the same page, or merely mention
+    the same company by name).
+
+    entity_name is the product/competitor the claim is about, passed through
+    to `_claim_and_quote_overlap` so its name doesn't itself count as shared
+    content; see that function's docstring for why.
 
     A false "grounded" on a fabricated claim is worse than a false
-    rejection of a true one, so every one of these three checks must pass;
-    any single failure drops the claim.
+    rejection of a true one, so every one of these checks must pass; any
+    single failure drops the claim.
     """
     if not claim.strip():
         return False
@@ -395,4 +443,4 @@ def is_claim_grounded(claim: str, quote: str, page_text: str) -> bool:
         return False
     if not quote_is_grounded(quote, page_text):
         return False
-    return _claim_and_quote_overlap(claim, quote)
+    return _claim_and_quote_overlap(claim, quote, entity_name)

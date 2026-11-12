@@ -27,12 +27,25 @@ class _StubProductFactsSource:
 
 
 def _full_comparison_reply(product_names):
+    # The comparison guardrail now checks a "supported" cell's source
+    # against the real fact sources available for that product (round-2
+    # fix), so this fixture must cite a source that is actually real: "stub#x"
+    # is the exact source _StubProductFactsSource gives Narsi. Acme has no
+    # competitor facts in this test (the Competitor Analyst reply is
+    # "{"items": []}"), so there is no real source to cite for it either;
+    # its cells are correctly "no_evidence" rather than "supported".
     comparisons = []
     for category in CATEGORIES:
-        cells = {
-            name: {"text": f"{name} on {category}", "sources": [f"src:{name}"], "status": "supported"}
-            for name in product_names
-        }
+        cells = {}
+        for name in product_names:
+            if name == "Acme":
+                cells[name] = {"text": f"{name} on {category}", "sources": [], "status": "no_evidence"}
+            else:
+                cells[name] = {
+                    "text": f"{name} on {category}",
+                    "sources": ["stub#x"],
+                    "status": "supported",
+                }
         comparisons.append({"category": category, "cells": cells})
     return json.dumps({"comparisons": comparisons})
 

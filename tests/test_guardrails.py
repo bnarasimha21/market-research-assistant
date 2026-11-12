@@ -8,7 +8,11 @@ from __future__ import annotations
 import json
 
 from market_research.categories import CATEGORIES, MAX_CELL_LENGTH
-from market_research.guardrails import make_comparison_guardrail, validate_comparison_payload
+from market_research.guardrails import (
+    MAX_GUARDRAIL_ATTEMPTS,
+    make_comparison_guardrail,
+    validate_comparison_payload,
+)
 from market_research.models import Cell, Comparison, ComparisonList
 
 
@@ -149,6 +153,90 @@ def test_supported_without_sources_fails():
     assert "no sources" in error
 
 
+# -- supported sources must match a real fact source, not just be non-trivial --
+# Round-2 finding: the previous check was only MIN_SOURCE_LENGTH (3+ chars),
+# so a fabricated source like "trust me" passed as "supported". These tests
+# pass `valid_sources` (the real fact sources available per product) and
+# assert the fabricated case is now rejected while a real one still passes.
+
+
+def _valid_list_with_sources(cell0_sources_by_product: dict[str, list[str]]):
+    full = _full_valid_list()
+    comparisons = list(full.comparisons)
+    comparisons[0] = Comparison(
+        category=comparisons[0].category,
+        cells={
+            name: Cell(text=f"text for {name}", sources=sources, status="supported")
+            for name, sources in cell0_sources_by_product.items()
+        },
+    )
+    return ComparisonList(comparisons=comparisons)
+
+
+def test_fabricated_source_fails_against_real_fact_sources():
+    # The exact ["trust me"] case from the round-2 review.
+    comparison_list = _valid_list_with_sources(
+        {"Narsi": ["trust me"], "Acme": ["real-source#pricing"]}
+    )
+    valid_sources = {"Narsi": {"product_narsi.md#pricing"}, "Acme": {"real-source#pricing"}}
+    ok, error = validate_comparison_payload(comparison_list, valid_sources=valid_sources)
+    assert not ok
+    assert "none of which matches a real fact source" in error
+
+
+def test_abc_and_my_memory_fabricated_sources_also_fail():
+    for fabricated in ("abc", "my memory"):
+        comparison_list = _valid_list_with_sources(
+            {"Narsi": [fabricated], "Acme": ["real-source#pricing"]}
+        )
+        valid_sources = {"Narsi": {"product_narsi.md#pricing"}, "Acme": {"real-source#pricing"}}
+        ok, error = validate_comparison_payload(comparison_list, valid_sources=valid_sources)
+        assert not ok, f"expected {fabricated!r} to be rejected"
+        assert "none of which matches a real fact source" in error
+
+
+def test_real_source_string_passes_against_valid_sources():
+    # _full_valid_list() fills every category's cells with sources=["src:<name>"],
+    # so valid_sources must cover that default too, not just the overridden
+    # category's source, or every other category would be (correctly)
+    # flagged as citing an unmatched source.
+    comparison_list = _valid_list_with_sources(
+        {"Narsi": ["product_narsi.md#pricing"], "Acme": ["real-source#pricing"]}
+    )
+    valid_sources = {
+        "Narsi": {"product_narsi.md#pricing", "src:Narsi"},
+        "Acme": {"real-source#pricing", "src:Acme"},
+    }
+    ok, error = validate_comparison_payload(comparison_list, valid_sources=valid_sources)
+    assert ok
+    assert error is None
+
+
+def test_guardrail_rejects_fabricated_source_end_to_end():
+    """The same ["trust me"] case, but through make_comparison_guardrail
+    (the actual Task-attached callable), not just validate_comparison_payload.
+    """
+    valid_sources = {"Narsi": {"product_narsi.md#pricing"}, "Acme": {"acme.com/pricing"}}
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"], valid_sources)
+    bad_list = _valid_list_with_sources({"Narsi": ["trust me"], "Acme": ["acme.com/pricing"]})
+    ok, error = guardrail(bad_list.model_dump_json())
+    assert not ok
+    assert "real fact source" in error
+
+
+def test_guardrail_accepts_real_source_end_to_end():
+    valid_sources = {
+        "Narsi": {"product_narsi.md#pricing", "src:Narsi"},
+        "Acme": {"acme.com/pricing", "src:Acme"},
+    }
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"], valid_sources)
+    good_list = _valid_list_with_sources(
+        {"Narsi": ["product_narsi.md#pricing"], "Acme": ["acme.com/pricing"]}
+    )
+    ok, _ = guardrail(good_list.model_dump_json())
+    assert ok
+
+
 # -- make_comparison_guardrail: stateful retry/patch behaviour --
 
 
@@ -186,6 +274,123 @@ def test_guardrail_forces_partial_success_after_retries_exhausted():
     assert guardrail.state.partial
     assert guardrail.state.missing_categories == list(CATEGORIES)
     assert guardrail.state.retries == 2
+
+
+# -- round-1 regression coverage (finding 3): these scenarios were fixed in
+# round 1 (guardrails.py changed substantially to add them) but never got
+# their own tests. Each must be flagged on the FINAL guardrail attempt (the
+# forced-success/patch path), proving the bad category is dropped and
+# replaced with a "no_evidence" placeholder rather than passed through.
+
+
+def _force_final_attempt(guardrail, bad_payload: str):
+    """Drive a guardrail through every allowed attempt with `bad_payload`
+    repeated, returning the final (forced-success) result.
+    """
+    result = None
+    for _ in range(MAX_GUARDRAIL_ATTEMPTS):
+        result = guardrail(bad_payload)
+    return result
+
+
+def test_identical_cell_text_is_flagged_on_final_attempt():
+    full = _full_valid_list()
+    comparisons = list(full.comparisons)
+    comparisons[0] = Comparison(
+        category=comparisons[0].category,
+        cells={
+            "Narsi": Cell(text="same text", sources=["s"], status="supported"),
+            "Acme": Cell(text="same text", sources=["s"], status="supported"),
+        },
+    )
+    bad = ComparisonList(comparisons=comparisons).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    assert comparisons[0].category in guardrail.state.missing_categories
+    parsed = ComparisonList.model_validate_json(payload)
+    patched_row = next(c for c in parsed.comparisons if c.category == comparisons[0].category)
+    assert all(cell.status == "no_evidence" for cell in patched_row.cells.values())
+
+
+def test_zero_source_supported_cell_structurally_is_flagged_on_final_attempt():
+    """Distinct from the string-based source check in finding 1: this is
+    `sources=[]` with `status="supported"`, a structurally missing source,
+    not a fabricated string.
+    """
+    full = _full_valid_list()
+    comparisons = list(full.comparisons)
+    comparisons[0] = Comparison(
+        category=comparisons[0].category,
+        cells={
+            "Narsi": Cell(text="x", sources=[], status="supported"),
+            "Acme": Cell(text="y", sources=["s"], status="supported"),
+        },
+    )
+    bad = ComparisonList(comparisons=comparisons).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    assert comparisons[0].category in guardrail.state.missing_categories
+
+
+def test_eleventh_made_up_category_is_flagged_on_final_attempt():
+    full = _full_valid_list()
+    extra = Comparison(
+        category="Not A Real Category",
+        cells={name: Cell(text="x", sources=["s"], status="supported") for name in ("Narsi", "Acme")},
+    )
+    bad = ComparisonList(comparisons=[*full.comparisons, extra]).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    parsed = ComparisonList.model_validate_json(payload)
+    categories_seen = {c.category for c in parsed.comparisons}
+    assert categories_seen == set(CATEGORIES)
+    assert "Not A Real Category" not in categories_seen
+
+
+def test_duplicate_category_is_flagged_on_final_attempt():
+    full = _full_valid_list()
+    bad = ComparisonList(comparisons=[*full.comparisons, full.comparisons[0]]).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    assert full.comparisons[0].category in guardrail.state.missing_categories
+    parsed = ComparisonList.model_validate_json(payload)
+    categories_seen = [c.category for c in parsed.comparisons]
+    assert categories_seen.count(full.comparisons[0].category) == 1
+
+
+def test_wrong_product_name_keys_is_flagged_on_final_attempt():
+    full = _full_valid_list()
+    comparisons = list(full.comparisons)
+    comparisons[0] = Comparison(
+        category=comparisons[0].category,
+        cells={
+            "WrongName": Cell(text="x", sources=["s"], status="supported"),
+            "Acme": Cell(text="y", sources=["s"], status="supported"),
+        },
+    )
+    bad = ComparisonList(comparisons=comparisons).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    assert comparisons[0].category in guardrail.state.missing_categories
+
+
+def test_empty_cells_dict_is_flagged_on_final_attempt():
+    full = _full_valid_list()
+    comparisons = list(full.comparisons)
+    comparisons[0] = Comparison(category=comparisons[0].category, cells={})
+    bad = ComparisonList(comparisons=comparisons).model_dump_json()
+    guardrail = make_comparison_guardrail(["Narsi", "Acme"])
+    ok, payload = _force_final_attempt(guardrail, bad)
+    assert ok
+    assert comparisons[0].category in guardrail.state.missing_categories
+    parsed = ComparisonList.model_validate_json(payload)
+    patched_row = next(c for c in parsed.comparisons if c.category == comparisons[0].category)
+    assert set(patched_row.cells.keys()) == {"Narsi", "Acme"}
 
 
 def test_guardrail_recovers_on_second_attempt():

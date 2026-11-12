@@ -118,12 +118,27 @@ def build_comparison_task(
     competitor_names: list[str],
     product_block: str,
     competitor_facts: dict[str, CompetitorFacts],
+    product_facts: ProductFacts | None = None,
 ) -> tuple[Task, Callable]:
     competitor_blocks = "\n\n".join(
         competitor_facts[name].as_prompt_block() for name in competitor_names
     )
     product_names = [my_product, *competitor_names]
-    guardrail_fn = make_comparison_guardrail(product_names)
+
+    # The real fact sources available to this stage for each product: the
+    # product's own cited facts (ProductFacts.source) for my_product, and
+    # each competitor's grounded claims (CompetitorFact.source_url) for
+    # that competitor. The comparison guardrail checks every "supported"
+    # cell's claimed source against this, not just its length, so a cell
+    # citing something like "trust me" that is not one of these real
+    # sources is flagged rather than passed through.
+    valid_sources: dict[str, set[str]] = {
+        my_product: {fact.source for fact in product_facts.items} if product_facts else set(),
+    }
+    for name in competitor_names:
+        valid_sources[name] = {item.source_url for item in competitor_facts[name].items}
+
+    guardrail_fn = make_comparison_guardrail(product_names, valid_sources)
 
     task = Task(
         description=(
@@ -136,10 +151,11 @@ def build_comparison_task(
             f"{_CATEGORY_LIST_TEXT}\n"
             f"- \"cells\": an object keyed by product name (exactly {product_names}), each "
             "value an object with \"text\" (a short comparison for that product on that "
-            "category), \"sources\" (a list of source identifiers backing the text, taken "
-            "from the facts above), and \"status\" (\"supported\" if at least one source "
-            "backs the text, else \"no_evidence\"). Cells for different products must not "
-            "repeat the exact same text."
+            "category), \"sources\" (a list of source identifiers backing the text, copied "
+            "exactly from the \"source\" values given in the facts above, never paraphrased "
+            "or invented), and \"status\" (\"supported\" if at least one real source backs "
+            "the text, else \"no_evidence\"). Cells for different products must not repeat "
+            "the exact same text."
         ),
         expected_output=(
             "A single JSON object matching the schema described above. Return JSON only, "

@@ -33,7 +33,7 @@ from market_research.agents import (
 )
 from market_research.errors import StageFailed
 from market_research.facts import ProductFactsSource, get_product_facts_source
-from market_research.models import ComparisonList, CompetitorFact, CompetitorFacts
+from market_research.models import ComparisonList, CompetitorFact, CompetitorFacts, ProductFacts
 from market_research.sources import (
     SearchBackend,
     gather_pages,
@@ -47,6 +47,7 @@ class MarketState(BaseModel):
     my_product: str = ""
     competitors: list[str] = Field(default_factory=list)
     product_report: str = ""
+    product_facts: ProductFacts | None = None
     competitor_facts: dict[str, CompetitorFacts] = Field(default_factory=dict)
     dropped_facts: int = 0
     comparison: ComparisonList | None = None
@@ -88,6 +89,7 @@ class MarketResearchFlow(Flow[MarketState]):
                 raise StageFailed("product", str(exc)) from exc
         report = result.raw if hasattr(result, "raw") else str(result)
         self.state.product_report = report
+        self.state.product_facts = facts
         return report
 
     @listen(gather_product_facts)
@@ -124,6 +126,7 @@ class MarketResearchFlow(Flow[MarketState]):
                     self.state.competitors,
                     self.state.product_report,
                     competitor_facts,
+                    self.state.product_facts,
                 )
                 crew = Crew(agents=[agent], tasks=[task])
                 crew.kickoff()
@@ -184,7 +187,7 @@ def _parse_and_ground_competitor_facts(raw: str, pages) -> tuple[list[Competitor
         source_url = str(item.get("source_url", "")).strip()
         quote = str(item.get("quote", "")).strip()
         page = pages_by_url.get(source_url)
-        if page is None or not is_claim_grounded(claim, quote, page.text):
+        if page is None or not is_claim_grounded(claim, quote, page.text, pages.competitor):
             dropped += 1
             continue
         kept.append(CompetitorFact(claim=claim, source_url=source_url, quote=quote))

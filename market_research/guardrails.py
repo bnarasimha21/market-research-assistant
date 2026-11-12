@@ -23,11 +23,23 @@ GUARDRAIL_MAX_RETRIES = 2
 MAX_GUARDRAIL_ATTEMPTS = GUARDRAIL_MAX_RETRIES + 1
 
 # A "supported" cell's source must be more than an empty or near-empty
-# placeholder string (e.g. "" or " ") to count as a real citation.
+# placeholder string (e.g. "" or " ") to count as a real citation. This is
+# only a cheap first filter; the real check is that the source matches one
+# of the actual fact sources available for that product (see
+# `valid_sources` below), so `["trust me"]` / `["abc"]` / `["my memory"]`
+# are rejected even though they clear this length bar.
 MIN_SOURCE_LENGTH = 3
 
 
-def validate_comparison(output: object, product_names: list[str] | None = None) -> tuple[bool, Any]:
+def _normalize_source(source: str) -> str:
+    return source.strip().lower()
+
+
+def validate_comparison(
+    output: object,
+    product_names: list[str] | None = None,
+    valid_sources: dict[str, set[str]] | None = None,
+) -> tuple[bool, Any]:
     """Validate a task output (or a raw JSON string / ComparisonList) against
     the output contract.
 
@@ -36,6 +48,11 @@ def validate_comparison(output: object, product_names: list[str] | None = None) 
     rule in `validate_comparison_payload`. It does not retry or patch
     anything itself; see GuardrailTracker for the stateful wrapper attached
     to the real Task.
+
+    valid_sources, when given, maps each product name to the set of real
+    fact source strings (ProductFacts.source / CompetitorFact.source_url)
+    actually available for that product, so a "supported" cell's claimed
+    source can be checked against real evidence rather than just its length.
     """
     raw = getattr(output, "raw", output)
     try:
@@ -43,7 +60,7 @@ def validate_comparison(output: object, product_names: list[str] | None = None) 
     except (ValidationError, ValueError, TypeError) as exc:
         return False, f"output is not valid JSON matching the ComparisonList schema: {exc}"
 
-    ok, error = validate_comparison_payload(comparison_list, product_names)
+    ok, error = validate_comparison_payload(comparison_list, product_names, valid_sources)
     if not ok:
         return False, error
     return True, comparison_list.model_dump_json()
@@ -66,7 +83,11 @@ def _parse(raw: object) -> ComparisonList:
     raise TypeError(f"cannot parse comparison output of type {type(raw)!r}")
 
 
-def _category_violations(comparison: Comparison, product_names: list[str] | None) -> list[str]:
+def _category_violations(
+    comparison: Comparison,
+    product_names: list[str] | None,
+    valid_sources: dict[str, set[str]] | None = None,
+) -> list[str]:
     """Every output-contract violation for a single comparison row, keyed to
     its own category elsewhere. Does NOT cover the list-level rules
     (missing/duplicated/unknown categories); see `validate_comparison_payload`.
@@ -97,6 +118,15 @@ def _category_violations(comparison: Comparison, product_names: list[str] | None
                     f"cell for {product!r} is marked 'supported' but has an implausible/trivial "
                     f"source (empty or shorter than {MIN_SOURCE_LENGTH} characters)"
                 )
+            elif valid_sources is not None:
+                allowed = {_normalize_source(s) for s in valid_sources.get(product, set())}
+                claimed = {_normalize_source(s) for s in cell.sources}
+                if not (claimed & allowed):
+                    violations.append(
+                        f"cell for {product!r} is marked 'supported' but cites "
+                        f"{sorted(cell.sources)!r}, none of which matches a real fact source "
+                        f"for {product!r}"
+                    )
         texts_by_product[product] = cell.text.strip().lower()
 
     seen_texts: dict[str, str] = {}
@@ -110,7 +140,9 @@ def _category_violations(comparison: Comparison, product_names: list[str] | None
 
 
 def validate_comparison_payload(
-    comparison_list: ComparisonList, product_names: list[str] | None = None
+    comparison_list: ComparisonList,
+    product_names: list[str] | None = None,
+    valid_sources: dict[str, set[str]] | None = None,
 ) -> tuple[bool, str | None]:
     """Run every output-contract rule against an already-parsed ComparisonList.
 
@@ -124,8 +156,15 @@ def validate_comparison_payload(
     caller actually asked to compare (my_product plus every competitor).
     When omitted, the cells-keys-match-product-names rule is skipped (kept
     optional so existing unit tests that only care about one category/cell
-    rule at a time don't need to pass it). Each rule below is covered by
-    its own passing/failing unit test in tests/test_guardrails.py.
+    rule at a time don't need to pass it).
+
+    valid_sources, when given, maps each product name to the set of real
+    fact source strings available for it; a "supported" cell whose claimed
+    source doesn't match any of them is flagged, the same as the other
+    cell-level rules. When omitted, that check is skipped for the same
+    "existing unit tests don't need to pass it" reason as product_names.
+    Each rule below is covered by its own passing/failing unit test in
+    tests/test_guardrails.py.
     """
     errors: list[str] = []
     categories_seen: list[str] = [c.category for c in comparison_list.comparisons]
@@ -143,7 +182,7 @@ def validate_comparison_payload(
         errors.append(f"unknown categories not in the configured list: {', '.join(extra)}")
 
     for comparison in comparison_list.comparisons:
-        for violation in _category_violations(comparison, product_names):
+        for violation in _category_violations(comparison, product_names, valid_sources):
             errors.append(f"category {comparison.category!r}: {violation}")
 
     if errors:
@@ -166,7 +205,9 @@ class GuardrailState:
 
 
 def _build_patched_list(
-    comparison_list: ComparisonList, product_names: list[str]
+    comparison_list: ComparisonList,
+    product_names: list[str],
+    valid_sources: dict[str, set[str]] | None = None,
 ) -> tuple[ComparisonList, list[str]]:
     """Build a schema-valid ComparisonList for the final, forced-success
     attempt, and return the full list of categories that failed and were
@@ -195,7 +236,7 @@ def _build_patched_list(
             good.pop(category, None)
             continue
         seen_once.add(category)
-        if _category_violations(comparison, product_names):
+        if _category_violations(comparison, product_names, valid_sources):
             continue  # present but invalid: drop, will be patched below
         good[category] = comparison
 
@@ -213,9 +254,18 @@ def _build_patched_list(
     return ComparisonList(comparisons=comparisons), failed
 
 
-def make_comparison_guardrail(product_names: list[str]):
+def make_comparison_guardrail(
+    product_names: list[str], valid_sources: dict[str, set[str]] | None = None
+):
     """Build the stateful guardrail callable attached to the comparison Task
     as `guardrail=`.
+
+    valid_sources, when given, maps each product name to the set of real
+    fact source strings available to the comparison stage for that product
+    (ProductFacts.source for `my_product`, CompetitorFact.source_url for
+    each competitor). Without it, a "supported" cell is only checked for a
+    non-trivial source string, not a real one, so `sources: ["trust me"]`
+    would pass.
 
     This MUST be a plain function (a closure), not a callable class
     instance. CrewAI's guardrail retry path constructs an
@@ -255,7 +305,7 @@ def make_comparison_guardrail(product_names: list[str]):
         if state.attempts < MAX_GUARDRAIL_ATTEMPTS:
             return False, error
 
-        patched, failed = _build_patched_list(comparison_list, product_names)
+        patched, failed = _build_patched_list(comparison_list, product_names, valid_sources)
         state.partial = True
         state.missing_categories = failed
         return True, patched.model_dump_json()
@@ -279,7 +329,7 @@ def make_comparison_guardrail(product_names: list[str]):
             error = f"output is not valid JSON matching the ComparisonList schema: {exc}"
             return _fail_or_patch(error, ComparisonList(comparisons=[]))
 
-        ok, error = validate_comparison_payload(comparison_list, product_names)
+        ok, error = validate_comparison_payload(comparison_list, product_names, valid_sources)
         if ok:
             state.last_error = None
             return True, comparison_list.model_dump_json()

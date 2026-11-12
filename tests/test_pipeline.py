@@ -64,10 +64,19 @@ def _comparison_reply_for(my_product: str, competitors: list[str]) -> str:
 
     from market_research.categories import CATEGORIES
 
+    # "no_evidence"/no sources rather than "supported" with a made-up
+    # "src:<name>" string: the comparison guardrail now checks a
+    # "supported" cell's source against the real fact sources available
+    # for that product (round-2 fix to market_research.guardrails), and
+    # these tests use the real LocalMarkdownSource for my_product plus an
+    # empty FixtureSearch for every competitor, so there is no real source
+    # a fabricated "src:<name>" could ever match. These tests are about
+    # pipeline/caching mechanics, not grounding, so "no_evidence" sidesteps
+    # that check entirely while still producing a schema-valid reply.
     comparisons = []
     for category in CATEGORIES:
         cells = {
-            name: {"text": f"{name} - {category}", "sources": [f"src:{name}"], "status": "supported"}
+            name: {"text": f"{name} - {category}", "sources": [], "status": "no_evidence"}
             for name in [my_product, *competitors]
         }
         comparisons.append({"category": category, "cells": cells})
