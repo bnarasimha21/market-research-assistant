@@ -13,12 +13,21 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from market_research.errors import ConfigError, StageFailed
 from market_research.llm import current_model_id
 from market_research.models import ResearchInput
 from market_research.pipeline import run_comparison
 from market_research.pricing import estimate_cost_usd, load_pricing
+
+# The original app.py called this; the typed-pipeline rewrite dropped it,
+# which meant following the README's own setup steps (copy .env.example to
+# .env, `streamlit run app.py`) silently did nothing: run_comparison() would
+# raise ConfigError for a missing OPENAI_API_KEY even though .env had it.
+# crew_flow.py (the CLI entry point) still calls this; app.py must too,
+# since it no longer meaningfully depends on crew_flow.py for this.
+load_dotenv()
 
 DISCLOSURE_BANNER = (
     "\"My product\" in this demo is Narsi, a fictional AI coding assistant "
@@ -29,7 +38,18 @@ DISCLOSURE_BANNER = (
 
 def _result_to_rows(comparison_list, product_names: list[str]) -> list[dict]:
     rows = []
+    seen_categories: set[str] = set()
     for comparison in comparison_list.comparisons:
+        if comparison.category in seen_categories:
+            # Defensive: the comparison stage's guardrail should never let a
+            # duplicate category through, but if one ever does, keep only
+            # the first occurrence. A duplicate "Category" value would
+            # otherwise become a duplicate index in the DataFrame built
+            # below, and df.loc[category, name] returns a Series instead of
+            # a scalar for a duplicate index, which crashes the per-category
+            # detail view further down.
+            continue
+        seen_categories.add(comparison.category)
         row = {"Category": comparison.category}
         for name in product_names:
             cell = comparison.cells.get(name)
@@ -163,6 +183,14 @@ if __name__ == "__main__":
     with col3:
         competitor2 = st.text_input("Enter second competitor name", "Cursor")
 
+    force_refresh = st.checkbox(
+        "Force a fresh run (ignore the cached result, if any)",
+        value=False,
+        help="A cached result normally expires after 24h, or when a known-partial "
+        "guardrail result would otherwise be served again. Check this to skip the "
+        "cache for this run regardless.",
+    )
+
     if st.button("Generate Comparison"):
         competitors = [c.strip() for c in (competitor1, competitor2) if c.strip()]
         try:
@@ -172,7 +200,7 @@ if __name__ == "__main__":
         else:
             with st.spinner("Running product, competitor and comparison research..."):
                 try:
-                    result = run_comparison(inputs)
+                    result = run_comparison(inputs, force_refresh=force_refresh)
                 except ConfigError as exc:
                     st.error(f"Configuration problem, nothing was run: {exc}")
                 except StageFailed as exc:
