@@ -114,3 +114,19 @@ def test_one_real_and_one_invented_quote_only_real_one_survives(local_server, mo
     assert len(facts) == 1
     assert facts[0].claim == "Free tier available"
     assert facts[0].source_url == pricing_url
+
+
+def test_malformed_json_counts_as_one_dropped_fact_not_zero():
+    """A reply that fails to parse as JSON at all must never be
+    indistinguishable from "zero items were attempted": that previously made
+    evals/run.py's grounding_rate (kept / total_attempted, else 1.0 if
+    total_attempted is 0) read as a trivially perfect 1.0 for a response
+    that actually failed outright, the same as a competitor with correctly
+    zero evidence. See market_research.flow._parse_and_ground_competitor_facts.
+    """
+    from market_research.sources import CompetitorPages
+
+    pages = CompetitorPages(competitor="Acme", pages=[])
+    facts, dropped = _parse_and_ground_competitor_facts("this is not json at all {{{", pages)
+    assert facts == []
+    assert dropped == 1

@@ -38,7 +38,7 @@ from market_research.sources import (
     SearchBackend,
     gather_pages,
     get_search_backend,
-    quote_is_grounded,
+    is_claim_grounded,
 )
 from market_research.trace import RunRecorder, recording_stage
 
@@ -141,10 +141,24 @@ class MarketResearchFlow(Flow[MarketState]):
 
 
 def _parse_and_ground_competitor_facts(raw: str, pages) -> tuple[list[CompetitorFact], int]:
-    """Deterministic grounding check: keep a fact only if its quote is a
-    substring (after whitespace normalization) of the fetched page it
-    names. Everything else is dropped and counted, never shown as if it
-    were real. Malformed JSON from the agent yields zero facts, not a crash.
+    """Deterministic grounding check: keep a fact only if its quote is long
+    enough to be a real sentence fragment, is a substring (after
+    whitespace normalization) of the fetched page it names, AND shares real
+    content with the claim it is supposed to support (see
+    `sources.is_claim_grounded`). A quote merely existing somewhere on the
+    page is not enough -- "claim: Acme is free forever and SOC2 certified,
+    quote: e" and "claim: Acme Enterprise is $5 per seat, quote: Enterprise"
+    were both wrongly accepted before this used the full check. Everything
+    that fails is dropped and counted, never shown as if it were real.
+    Malformed JSON from the agent yields zero facts and counts as one
+    dropped fact, not a crash and not a silent zero. Returning (facts=[],
+    dropped=0) here previously made evals/run.py's grounding_rate read as a
+    trivially perfect 1.0 ("kept / total_attempted if total_attempted else
+    1.0" with both kept and total_attempted at 0) for a reply that actually
+    failed to parse at all -- indistinguishable from a competitor the model
+    correctly found zero evidence for. Counting it as one dropped fact makes
+    total_attempted nonzero, so a malformed reply shows up as a real,
+    nonzero drop instead of a silently-perfect pass.
     """
     text = raw.strip()
     if text.startswith("```"):
@@ -155,7 +169,7 @@ def _parse_and_ground_competitor_facts(raw: str, pages) -> tuple[list[Competitor
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return [], 0
+        return [], 1
 
     items = data.get("items", []) if isinstance(data, dict) else []
     pages_by_url = {page.url: page for page in pages.pages}
@@ -170,7 +184,7 @@ def _parse_and_ground_competitor_facts(raw: str, pages) -> tuple[list[Competitor
         source_url = str(item.get("source_url", "")).strip()
         quote = str(item.get("quote", "")).strip()
         page = pages_by_url.get(source_url)
-        if not claim or not quote or page is None or not quote_is_grounded(quote, page.text):
+        if page is None or not is_claim_grounded(claim, quote, page.text):
             dropped += 1
             continue
         kept.append(CompetitorFact(claim=claim, source_url=source_url, quote=quote))
