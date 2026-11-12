@@ -80,14 +80,41 @@ class LocalMarkdownSource:
         self._sections = _parse_sections(self.markdown_path.read_text(encoding="utf-8"))
         if not self._sections:
             raise ConfigError(f"product markdown source has no sections: {self.markdown_path}")
-        self._bm25 = BM25Okapi([_tokenize(s.body) for s in self._sections])
+        # Index heading + body together, not body alone: a query like
+        # "Natural Language Interface" (one of CATEGORIES) scored 0 against
+        # a section literally headed "Natural Language Interface" whenever
+        # none of those words happened to also appear in the body text, so
+        # the exact-matching section lost to an unrelated one that happened
+        # to share a body word with the query.
+        self._bm25 = BM25Okapi([_tokenize(f"{s.heading} {s.body}") for s in self._sections])
 
     def _rank_for(self, query: str) -> list[_Section]:
         scores = self._bm25.get_scores(_tokenize(query))
         ranked = sorted(zip(scores, self._sections, strict=True), key=lambda pair: pair[0], reverse=True)
-        return [section for _, section in ranked[: self.top_k]]
+        # Only keep sections that actually share a term with the query.
+        # Previously this always returned the top_k sections regardless of
+        # score, so a category with zero real lexical overlap to any
+        # section (score 0.0 for every section) still got the file's
+        # first/highest-index sections attached as if they were relevant
+        # "[category] ..." facts, with no indication they weren't really
+        # about that category at all.
+        return [section for score, section in ranked[: self.top_k] if score > 0.0]
 
     def get_facts(self, product: str) -> ProductFacts:
+        """Return ranked facts about "my product".
+
+        `product` is used only as a display label on the returned
+        ProductFacts (and downstream in the UI/report); it does not select
+        which file is read. This source is intentionally hardcoded to one
+        file (markdown_path, defaulting to product_narsi.md) because this
+        whole pipeline's "my product" is always the fictional demo product
+        described there (see app.py's DISCLOSURE_BANNER) -- typing a
+        different name into "My product name" relabels the output, it does
+        not research a different real product. A caller who wants to
+        research an actually-different product must construct
+        LocalMarkdownSource(markdown_path=...) pointing at that product's
+        own markdown file.
+        """
         items: list[Fact] = []
         seen_headings: set[str] = set()
         for category in CATEGORIES:
@@ -112,12 +139,28 @@ class LocalMarkdownSource:
 
 
 class DOKnowledgeBaseSource:
-    """Optional source backed by a hosted DigitalOcean knowledge-base agent.
+    """EXPERIMENTAL / NOT ACTUALLY A KNOWLEDGE BASE CALL.
 
-    Only used when FACTS_SOURCE=do_knowledge_base is configured; calls the
-    hosted KB agent via the shared LLM provider layer and maps retrieval
-    chunks to Fact.source. This performs real network I/O and is not
-    exercised by the default test suite.
+    Despite its name and the "do_knowledge_base" config value, this does
+    not call any hosted DigitalOcean knowledge-base agent, and no document
+    or retrieval index is attached to anything here. It sends a plain text
+    prompt ("Using only the attached knowledge base, retrieve facts about
+    ...") to whatever generic LLM get_llm() built -- the same chat LLM used
+    for every other stage -- with nothing actually attached. The model has
+    no real knowledge base to draw from, so it can only comply by
+    fabricating facts and fabricating the "document and section" citation
+    the prompt asks it to cite, which this class then puts straight into
+    Fact.source as if it were a real citation. Selecting
+    FACTS_SOURCE=do_knowledge_base therefore produces plausible-looking but
+    unverifiable, likely-hallucinated "facts", not retrieval-grounded ones.
+
+    This performs real network I/O (an LLM call per category) and is not
+    exercised by the default test suite. Wiring this to an actual DO
+    knowledge-base/RAG endpoint (so the attached corpus and citations are
+    real) is unfinished work, not something this fix invents; until that
+    happens, get_product_facts_source() logs a warning whenever this
+    backend is selected so a caller doesn't mistake its output for grounded
+    facts the way LocalMarkdownSource's are.
     """
 
     def __init__(self, llm, kb_agent_role: str = "knowledge_base") -> None:
@@ -148,6 +191,7 @@ class DOKnowledgeBaseSource:
 
 def get_product_facts_source() -> ProductFactsSource:
     """Factory reading FACTS_SOURCE from the environment (default: local markdown)."""
+    import logging
     import os
 
     backend = os.getenv("FACTS_SOURCE", "local_markdown").strip().lower()
@@ -156,6 +200,12 @@ def get_product_facts_source() -> ProductFactsSource:
     if backend == "do_knowledge_base":
         from market_research.llm import get_llm
 
+        logging.getLogger(__name__).warning(
+            "FACTS_SOURCE=do_knowledge_base selected: see DOKnowledgeBaseSource's "
+            "docstring -- this does not call a real hosted knowledge base, it "
+            "prompts a generic LLM with nothing attached and takes whatever "
+            "citation it fabricates at face value."
+        )
         return DOKnowledgeBaseSource(get_llm("knowledge_base"))
     raise ConfigError(
         f"Unknown FACTS_SOURCE={backend!r}; expected local_markdown or do_knowledge_base"

@@ -60,3 +60,31 @@ def test_every_fact_carries_a_source_heading(source):
 def test_get_facts_sets_product_name(source):
     facts = source.get_facts("Narsi")
     assert facts.product == "Narsi"
+
+
+def test_heading_only_match_still_ranks_above_unrelated_body_text(source):
+    """Before heading text was included in the BM25 index, a query that
+    matched a section's HEADING but shared no words with that section's
+    BODY could score 0 against the exact-topic section while still scoring
+    nonzero against a completely unrelated section whose body happened to
+    share some other word with the query. "Natural Language Interface" is
+    exactly this case against FIXTURE_MARKDOWN: the heading matches
+    verbatim, but the body ("Narsi understands plain English commands...")
+    shares none of those three words.
+    """
+    ranked = source.rank_sections("Natural Language Interface")
+    assert ranked and ranked[0] == "Natural Language Interface"
+
+
+def test_category_with_zero_lexical_overlap_attaches_no_section(tmp_path):
+    """A category that shares no real term with any section (not even via
+    its heading) must not get a fact attached at all. Previously
+    `_rank_for` always returned the top_k sections regardless of score, so
+    a category like "Future Development and Roadmap" against a one-section
+    file about an unrelated topic still got that section attached as if it
+    were a relevant fact.
+    """
+    path = tmp_path / "product.md"
+    path.write_text("# Unrelated Topic\nSomething about widgets and gadgets only.\n", encoding="utf-8")
+    source = LocalMarkdownSource(markdown_path=path, top_k=2)
+    assert source.rank_sections("Future Development and Roadmap") == []

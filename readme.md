@@ -19,7 +19,8 @@ verbatim quote from a real fetched page.
 - Per-stage cost/latency/token trace, CSV and Markdown-with-sources downloads
 - Pluggable LLM provider (OpenAI or DigitalOcean serverless inference) and
   pluggable "my product" facts source (a local markdown file by default, or
-  an optional hosted DigitalOcean knowledge base)
+  an experimental, not-actually-knowledge-base-backed alternative; see
+  "FACTS_SOURCE=do_knowledge_base is experimental" below)
 - Offline eval set (`evals/`) that scores category coverage, grounding rate,
   fact recall and no-evidence precision against hand-authored fixtures
 
@@ -53,20 +54,20 @@ verbatim quote from a real fetched page.
 
    Open `http://localhost:8501`.
 
-### Optional: a real knowledge base for "my product" facts
+### FACTS_SOURCE=do_knowledge_base is experimental, not a real knowledge base
 
 By default (`FACTS_SOURCE=local_markdown`) the product-facts stage reads
-`product_narsi.md` directly with BM25 ranking, offline, no model call. To use
-a real hosted DigitalOcean knowledge-base agent instead:
+`product_narsi.md` directly with BM25 ranking, offline, no model call.
 
-- Log in to [DigitalOcean](https://cloud.digitalocean.com/login).
-- Upload your product's markdown to Spaces object storage.
-- Create a knowledge base using that Spaces bucket as the source, and attach
-  it to a GenAI agent. See DigitalOcean's
-  [GenAI agent documentation](https://docs.digitalocean.com/products/genai-platform/)
-  for the current steps.
-- Set `FACTS_SOURCE=do_knowledge_base` in `.env` (this path makes a real
-  network call and is not exercised by the default test suite).
+`FACTS_SOURCE=do_knowledge_base` does **not** call a real hosted DigitalOcean
+knowledge base or GenAI agent, despite the name. It sends a plain prompt to
+whatever generic LLM is configured, with no document or retrieval index
+actually attached, and takes whatever citation the model fabricates in
+response at face value. Setting up a DigitalOcean knowledge base/GenAI agent
+would not change this: nothing in the code calls one. See
+`market_research/facts.py`'s `DOKnowledgeBaseSource` docstring. Wiring this
+to an actual DO knowledge-base endpoint is unfinished work; until that is
+done, treat this path's output as unverified, not as a grounded fact.
 
 ### Optional: real competitor web search
 
