@@ -27,15 +27,28 @@ FakeLLM scripted directly from golden.yaml, so a "perfect" run should score
 at or near 1.0 on every metric. This checks the scoring and plumbing are
 correct, not a real model's quality -- see the "fake" results file's header.
 
---llm do_serverless / --llm claude_cli: builds a real LLM via
-market_research.llm.get_llm(), so these modes exercise the actual API
-providers and would produce real per-trio quality numbers plus real
-cost/latency from the LLM calls' usage. The code paths are implemented and
-correct (same get_llm() call run_comparison() makes), but this script was
-never actually run in either mode in this environment: no DO_MODEL_ACCESS_KEY
-or Anthropic credentials were available, and no API keys were requested or
-used. A reviewer or Narsi with those credentials set can run
-`python -m evals.run --llm do_serverless` directly to get real numbers.
+--llm do_serverless: builds a real LLM via market_research.llm.get_llm(),
+exercising the actual DigitalOcean serverless inference provider, and would
+produce real per-trio quality numbers plus real cost/latency from the LLM
+calls' usage. This flag forces LLM_PROVIDER=do_serverless for the duration
+of the run (see run_trio below) rather than trusting whatever LLM_PROVIDER
+happens to already be set in the ambient environment, since a mismatch there
+would silently run the wrong provider while the report header still claimed
+"--llm do_serverless". This script was never actually run in this mode in
+this environment: no DO_MODEL_ACCESS_KEY was available, and no API keys were
+requested or used. A reviewer or Narsi with DO_MODEL_ACCESS_KEY/DO_MODEL_ID
+set can run `python -m evals.run --llm do_serverless` directly to get real
+numbers.
+
+A `--llm claude_cli` mode previously existed in this file's CLI choices but
+was never actually wired to anything: market_research.llm.get_llm() has no
+claude_cli branch, so passing it just called get_llm() with whatever
+LLM_PROVIDER happened to already be set in the environment, ignoring the
+flag entirely. Rather than fake a provider path that doesn't exist, that
+choice has been removed. Wiring a real Anthropic/Claude provider into
+market_research/llm.py is a separate, real piece of work (a new LLM_PROVIDER
+branch there, a documented env var, a model id default) that this fix does
+not invent; it is not done here.
 
 --corrupt-trio <name>: deliberately mangles the first competitor's first
 golden quote in that trio's saved page text before running it, so the
@@ -46,6 +59,19 @@ fixture rather than always reading 1.0 by construction.
 """
 
 from __future__ import annotations
+
+import os
+
+# Must be set before the first `import crewai` anywhere in the process
+# (market_research.flow below pulls it in transitively): crewai's
+# Telemetry() singleton is built lazily the first time it's touched, and it
+# reads these two env vars at that construction time, not later, so setting
+# them after the import would be too late. A reviewer confirmed this harness
+# makes outbound telemetry calls on every real run (fake and real --llm
+# modes alike) unless these are set; setdefault() so a real override in the
+# caller's own environment still wins.
+os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 import argparse
 import datetime as dt
@@ -59,6 +85,7 @@ import yaml
 import market_research.sources as sources_mod
 from market_research.categories import CATEGORIES
 from market_research.flow import MarketResearchFlow
+from market_research.llm import current_model_id
 from market_research.sources import FixtureSearch, Page
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -216,9 +243,15 @@ def run_trio(trio_name: str, llm_mode: str = "fake", corrupt: bool = False) -> d
                 "Comparison Report Generator": _comparison_script(golden, my_product),
             }
         )
-    elif llm_mode in ("do_serverless", "claude_cli"):
+    elif llm_mode == "do_serverless":
         from market_research.llm import get_llm
 
+        # Force the provider the flag actually names, rather than trusting
+        # whatever LLM_PROVIDER happens to already be set in the ambient
+        # environment: without this, `--llm do_serverless` with
+        # LLM_PROVIDER=openai still in the shell would silently run openai
+        # while the rendered report's header claimed do_serverless.
+        os.environ["LLM_PROVIDER"] = "do_serverless"
         llm = get_llm("eval")
     else:
         raise ValueError(f"unknown --llm mode: {llm_mode!r}")
@@ -266,9 +299,17 @@ def _render_report(rows: list[dict[str, Any]], llm_mode: str, corrupt_trio: str 
             "not a real model's quality. A perfect run scores at or near 1.0 on every metric."
         )
     else:
+        # Read back the provider/model that was actually resolved for this
+        # run (run_trio sets LLM_PROVIDER itself for do_serverless) rather
+        # than just echoing the --llm flag string, so the header can never
+        # claim a provider/model different from what really answered the
+        # prompts.
+        resolved_provider = os.getenv("LLM_PROVIDER", "<unset>")
+        resolved_model = current_model_id() or "<unknown>"
         lines.append(
             f"Real-model mode ({llm_mode}): numbers below came from an actual "
-            "market_research.llm.get_llm() call against the configured provider."
+            "market_research.llm.get_llm() call against LLM_PROVIDER="
+            f"{resolved_provider!r}, model={resolved_model!r}."
         )
     lines.append("")
     header = "| trio | category_coverage | grounding_rate | fact_recall | no_evidence_precision | duration_s | tokens |"
@@ -311,7 +352,7 @@ def _render_report(rows: list[dict[str, Any]], llm_mode: str, corrupt_trio: str 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the offline market-research eval set.")
-    parser.add_argument("--llm", choices=["fake", "do_serverless", "claude_cli"], default="fake")
+    parser.add_argument("--llm", choices=["fake", "do_serverless"], default="fake")
     parser.add_argument("--trios", nargs="*", default=None, help="subset of trio names to run (default: all)")
     parser.add_argument(
         "--corrupt-trio",

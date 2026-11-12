@@ -48,6 +48,19 @@ since nothing in CrewAI's docs pins this down for a from-scratch subclass):
 
 from __future__ import annotations
 
+import os
+
+# Must run before the first `import crewai` anywhere in the process: crewai's
+# Telemetry() is constructed lazily via a PrivateAttr default_factory (see
+# crewai/events/event_listener.py), but the env vars it reads
+# (CREWAI_DISABLE_TELEMETRY, OTEL_SDK_DISABLED) are read at that construction
+# time, not at call time. Setting them only inside a test or fixture body is
+# too late once some other import has already pulled crewai in and built the
+# listener. setdefault() so a developer's own env value (e.g. deliberately
+# re-enabling telemetry to debug it) is never overridden.
+os.environ.setdefault("CREWAI_DISABLE_TELEMETRY", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+
 import threading
 from typing import Any
 
