@@ -58,3 +58,8 @@ venv
 .venv
 audio_files/
 daily_reports/
+
+# market-research-assistant: generated at runtime, never checked in
+/.cache/
+/runs/*.json
+!/runs/.gitkeep

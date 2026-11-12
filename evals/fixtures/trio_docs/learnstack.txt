@@ -1,0 +1,4 @@
+URL: https://learnstack.example.com/integrations
+Fetched: 2026-01-24
+
+LearnStack connects directly to Slack and Notion so teams can pull answers without leaving their existing tools. LearnStack's roadmap page has not been updated in over a year.

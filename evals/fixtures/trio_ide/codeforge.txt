@@ -1,0 +1,4 @@
+URL: https://codeforge.example.com/features
+Fetched: 2026-01-17
+
+CodeForge generates multi file code completions from natural language prompts inside the editor. CodeForge integrates with GitHub, GitLab, and Bitbucket out of the box.

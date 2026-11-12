@@ -1,0 +1,4 @@
+URL: https://cloudpeak.example.com/roadmap
+Fetched: 2026-01-22
+
+CloudPeak plans to ship a native mobile app and offline mode by the end of next year according to its public roadmap. CloudPeak offers no free tier of any kind.

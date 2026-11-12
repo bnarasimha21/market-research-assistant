@@ -1,0 +1,4 @@
+URL: https://helpwave.example.com/support
+Fetched: 2026-01-19
+
+HelpWave offers twenty four hour community forum support plus a paid tier with guaranteed four hour response times. HelpWave's interface uses a single command palette for every action.

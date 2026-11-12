@@ -1,0 +1,4 @@
+URL: https://globex.example.com/security
+Fetched: 2026-01-16
+
+Globex encrypts all customer data at rest and in transit using AES-256. Globex has no published pricing page and requires a sales call.

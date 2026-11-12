@@ -1,0 +1,4 @@
+URL: https://scaleops.example.com/perf
+Fetched: 2026-01-21
+
+ScaleOps runs on a globally distributed cluster and guarantees ninety nine point nine nine percent uptime. ScaleOps charges a flat monthly fee regardless of team size.

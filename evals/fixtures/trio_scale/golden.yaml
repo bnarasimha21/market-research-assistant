@@ -1,0 +1,38 @@
+my_product: Narsi
+competitors:
+  - name: ScaleOps
+    page_file: scaleops.txt
+    url: https://scaleops.example.com/perf
+    facts:
+      - category: "Scalability and Performance"
+        claim: "ScaleOps guarantees 99.99 percent uptime on a globally distributed cluster"
+        quote: "ScaleOps runs on a globally distributed cluster and guarantees ninety nine point nine nine percent uptime"
+      - category: "Pricing and Licensing"
+        claim: "ScaleOps charges a flat monthly fee regardless of team size"
+        quote: "ScaleOps charges a flat monthly fee regardless of team size"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
+  - name: CloudPeak
+    page_file: cloudpeak.txt
+    url: https://cloudpeak.example.com/roadmap
+    facts:
+      - category: "Future Development and Roadmap"
+        claim: "CloudPeak plans to ship a native mobile app and offline mode by the end of next year"
+        quote: "CloudPeak plans to ship a native mobile app and offline mode by the end of next year according to its public roadmap"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"

@@ -1,0 +1,4 @@
+URL: https://acme.example.com/pricing
+Fetched: 2026-01-15
+
+Acme costs twenty dollars per seat per month, billed annually, with a fourteen day free trial for new teams. All plans include email support.

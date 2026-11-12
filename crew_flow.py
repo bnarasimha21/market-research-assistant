@@ -1,68 +1,47 @@
-import os
+"""CLI entry point. A thin caller of market_research.pipeline.run_comparison,
+same as app.py; this module owns no research/grounding/guardrail logic.
+
+Usage: python crew_flow.py <my_product> <competitor1> [<competitor2> ...]
+"""
+
+from __future__ import annotations
+
 import sys
+
 from dotenv import load_dotenv
-from crewai import Crew, Flow
-from crewai.flow.flow import listen, start
-from product_research import product_researcher, product_research_task
-from competitor_research import competitor_analyst, competitor_research_task
-from comparison_report import comparison_analyst, comparison_research_task
-from inputs import INPUTS, get_input
+
+from market_research.errors import ConfigError, StageFailed
+from market_research.models import ResearchInput
+from market_research.pipeline import run_comparison
 
 load_dotenv()
 
 
-def _state(key: str) -> str:
-    """Read a string input (Streamlit session state first, then the CLI dict)."""
-    return get_input(key)
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print("Usage: python crew_flow.py <my_product> <competitor1> [<competitor2> ...]")
+        return 2
 
+    try:
+        inputs = ResearchInput(my_product=argv[0], competitors=list(argv[1:]))
+    except Exception as exc:
+        print(f"Invalid input: {exc}")
+        return 2
 
-class MarketResearchAssistant(Flow):
-    @start()
-    def get_product_narsi_info(self):  
-        product_research_crew = Crew(
-            agents=[product_researcher], 
-            tasks=[product_research_task]
-        )
+    try:
+        result = run_comparison(inputs)
+    except ConfigError as exc:
+        print(f"Configuration problem, nothing was run: {exc}")
+        return 2
+    except StageFailed as exc:
+        print(f"The {exc.stage} stage failed: {exc.reason}")
+        return 1
 
-        my_product = _state("my_product")
-        result = product_research_crew.kickoff(inputs={"my_product": my_product})
-        return result
-    
-    @listen(get_product_narsi_info)
-    def get_competitor_info(self):
-        competitor_research_crew = Crew(
-            agents=[competitor_analyst], 
-            tasks=[competitor_research_task]
-        )
+    print(result.comparisons.model_dump_json(indent=2))
+    if result.guardrail_partial:
+        print(f"Warning: partial result, missing categories: {result.missing_categories}")
+    return 0
 
-        my_product = _state("my_product")
-        competitor1 = _state("competitor1")
-        competitor2 = _state("competitor2") 
-
-        result = competitor_research_crew.kickoff(inputs={"my_product": my_product, "competitor1": competitor1, "competitor2": competitor2})
-        return result
-
-    @listen(get_competitor_info)
-    def get_comparison_info(self):
-        comparison_research_crew = Crew(
-            agents=[comparison_analyst], 
-            tasks=[comparison_research_task]
-        )
-
-        competitor1 = _state("competitor1")
-        competitor2 = _state("competitor2")
-
-        result = comparison_research_crew.kickoff(inputs={"competitor1": competitor1, "competitor2": competitor2})
-        return result
 
 if __name__ == "__main__":
-    # CLI use: python crew_flow.py [my_product] [competitor1] [competitor2]
-    # Values fall back to env vars, then to placeholder strings. session_state does not
-    # persist in bare mode, so the flow and the tools read these from inputs.INPUTS.
-    defaults = {"my_product": "MY_PRODUCT", "competitor1": "COMPETITOR1", "competitor2": "COMPETITOR2"}
-    for idx, key in enumerate(defaults, start=1):
-        value = sys.argv[idx] if len(sys.argv) > idx else os.getenv(key.upper(), defaults[key])
-        INPUTS[key] = str(value)
-    flow = MarketResearchAssistant()
-    result = flow.kickoff()
-    print(result)
+    sys.exit(main(sys.argv[1:]))
