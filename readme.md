@@ -1,92 +1,118 @@
 # Market Research Assistant
 
-A Streamlit-based web application that provides a beautiful visualization of market research between Narsi (A new AI tool), GitHub Copilot, and Cursor. You can change the product name to any product you want to compare.
+A Streamlit app that compares "my product" against one or more competitors
+across a fixed set of categories, with every competitor claim grounded in a
+verbatim quote from a real fetched page.
+
+> **Disclosure:** "my product" in this demo is Narsi, a fictional AI coding
+> assistant described in `product_narsi.md`, used only to demonstrate the
+> pipeline. It is not a real product. The app shows this banner too.
 
 ## Features
 
-- Interactive comparison table
-- Downloadable CSV export
-- Detailed category-wise comparison
-- Responsive design
+- Interactive comparison table across a fixed 10-category list
+- Every competitor claim is grounded in a verbatim quote from a page the
+  pipeline actually fetched; unsupported claims are dropped, not shown
+- Output-contract guardrails: the comparison stage retries on a malformed or
+  incomplete reply and falls back to a clearly marked partial result instead
+  of crashing
+- Per-stage cost/latency/token trace, CSV and Markdown-with-sources downloads
+- Pluggable LLM provider (OpenAI or DigitalOcean serverless inference) and
+  pluggable "my product" facts source (a local markdown file by default, or
+  an optional hosted DigitalOcean knowledge base)
+- Offline eval set (`evals/`) that scores category coverage, grounding rate,
+  fact recall and no-evidence precision against hand-authored fixtures
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repository and create a virtual environment:
 
-``` bash
-git clone https://github.com/bnarasimha/market-research-assistant.git
+   ```bash
+   git clone https://github.com/bnarasimha/market-research-assistant.git
+   cd market-research-assistant
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+2. Install dependencies (add `-r requirements-dev.txt` instead if you also
+   want to run tests/lint):
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Copy `.env.example` to `.env` and set `LLM_PROVIDER` plus that provider's
+   variables. The simplest path is `LLM_PROVIDER=openai` with `OPENAI_API_KEY`
+   set; see `market_research/llm.py` for the `do_serverless` alternative.
+
+4. Run the app:
+
+   ```bash
+   streamlit run app.py
+   ```
+
+   Open `http://localhost:8501`.
+
+### Optional: a real knowledge base for "my product" facts
+
+By default (`FACTS_SOURCE=local_markdown`) the product-facts stage reads
+`product_narsi.md` directly with BM25 ranking, offline, no model call. To use
+a real hosted DigitalOcean knowledge-base agent instead:
+
+- Log in to [DigitalOcean](https://cloud.digitalocean.com/login).
+- Upload your product's markdown to Spaces object storage.
+- Create a knowledge base using that Spaces bucket as the source, and attach
+  it to a GenAI agent. See DigitalOcean's
+  [GenAI agent documentation](https://docs.digitalocean.com/products/genai-platform/)
+  for the current steps.
+- Set `FACTS_SOURCE=do_knowledge_base` in `.env` (this path makes a real
+  network call and is not exercised by the default test suite).
+
+### Optional: real competitor web search
+
+Without `SERPER_API_KEY` set, the pipeline falls back to an empty search
+backend and fetches zero competitor pages (every competitor cell comes back
+`no_evidence`). Set `SERPER_API_KEY` to enable real search.
+
+## Evals
+
+`python -m evals.run --llm fake` runs the offline eval set end-to-end with no
+network access and no credentials, scoring six fixture trios on four metrics.
+Results are committed under `evals/results/`:
+
+- [`2026-11-12-fake.md`](evals/results/2026-11-12-fake.md): normal run,
+  checks the scoring/plumbing are correct (not a real model's quality).
+- [`2026-11-12-fake-corrupted-demo.md`](evals/results/2026-11-12-fake-corrupted-demo.md):
+  the same run with one fixture's quote deliberately mangled, demonstrating
+  that the grounding-rate metric actually detects a broken fixture.
+
+`--llm do_serverless` / `--llm claude_cli` run the same trios against a real
+provider for real quality numbers; these code paths exist and are correct but
+were never run with real credentials in this repository's history, so there
+is no committed real-model report yet.
+
+## Testing
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest -m "not slow"
 ```
 
-2. Create a virtual environment:
-
-``` bash
-python -m venv venv
-```
-
-3. Activate the virtual environment:
-
-``` bash
-source venv/bin/activate
-```
-
-4. Install required packages:
-
-``` bash
-pip install -r requirements.txt
-```
-
-5. Create GenAI Agents:
-- Login to [DigitalOcean](https://cloud.digitalocean.com/login).
-- For Product Research agent which is the first agent:
-        - upload product_narsi.md file (available in the root directory) to spaces object storage.
-        - create a knowledge base choosing the newly created spaces object storage as the source.
-        - attach knowledge base to the agent. 
-
-  To learn more about creating agents, refer to [GenAI Documentation](https://docs.digitalocean.com/products/genai-platform/how-to/manage-ai-agent/).
-- Create an Agent each for Competitor Research, and Comparison Report.
-- Agent instructions are available in the `agent_instructions.txt` file.
-- Copy the endpoints and keys for each agent.
-
-
-6. Set the environment variables:  
-
-- Copy .env.example file and create a .env file in the root directory.
-- Update the following variables from previous step:
-
-``` bash
-OPENAI_API_KEY=<your-openai-api-key>
-
-GENAI_PRODUCT_RESEARCHER_AGENT_ENDPOINT=<your-agent-endpoint>
-GENAI_PRODUCT_RESEARCHER_AGENT_KEY=<your-agent-key>
-
-GENAI_COMPETITOR_RESEARCHER_AGENT_ENDPOINT=<your-agent-endpoint>
-GENAI_COMPETITOR_RESEARCHER_AGENT_KEY=<your-agent-key>
-
-GENAI_COMPARISON_REPORT_AGENT_ENDPOINT=<your-agent-endpoint>
-GENAI_COMPARISON_REPORT_AGENT_KEY=<your-agent-key>
-```
-
-`OPENAI_API_KEY` is used by CrewAI's default LLM, which drives the three CrewAI agents. The `GENAI_*` endpoints and keys are used by the tools those agents call. Each tool sends the model name "DeepSeek R1 Distill Llama 70B" as a request parameter only; the model that actually answers is whatever you configured on the hosted GenAI agent behind that endpoint.
-
-Product and competitor names are not known when the modules are imported. They are read from the Streamlit inputs when you click "Generate Comparison" and passed into the crews as inputs.
-
-7. Run the application:
-
-``` bash
-streamlit run app.py
-```
-
-8. Open your browser and navigate to `http://localhost:8501`
-
+Tests are split into fast unit tests and `integration`-marked tests that
+drive the real CrewAI Flow/Crew/Task machinery with a scripted fake LLM (no
+network). CI (`.github/workflows/ci.yml`) runs both plus the fake-mode eval
+set on Python 3.11 and 3.13.
 
 ## Project Structure
 
-- `app.py`: Main Streamlit application file.
-- `crew_flow.py`: The main logic for the market research assistant.
-- `product_research.py`: The logic for the product research task.
-- `competitor_research.py`: The logic for the competitor research task.
-- `comparison_report.py`: The logic for the comparison report task.
-- `requirements.txt`: List of dependencies.
-- `README.md`: This file.
-- `product_narsi.md`: The product information for Narsi.
-- `agent_instructions.txt`: The instructions for the agents.
+- `app.py`, `crew_flow.py`: thin UI/CLI callers of
+  `market_research.pipeline.run_comparison`.
+- `market_research/`: the typed pipeline (models, LLM provider layer,
+  product-facts sources, competitor page fetching + grounding, comparison
+  guardrails, disk cache, per-stage trace, pricing estimates).
+- `evals/`: the offline eval set (fixtures, golden data, runner, results).
+- `tests/`: unit tests plus `integration`-marked end-to-end tests.
+- `product_narsi.md`: the fictional product used for this demo.
+- `pricing.yaml`: per-million-token price estimates used only for the UI's
+  cost display.
