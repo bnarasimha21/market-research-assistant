@@ -1,0 +1,38 @@
+my_product: Narsi
+competitors:
+  - name: Acme
+    page_file: acme.txt
+    url: https://acme.example.com/pricing
+    facts:
+      - category: "Pricing and Licensing"
+        claim: "Acme costs twenty dollars per seat per month"
+        quote: "Acme costs twenty dollars per seat per month"
+      - category: "Community and Support"
+        claim: "Acme plans include email support"
+        quote: "All plans include email support"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
+  - name: Globex
+    page_file: globex.txt
+    url: https://globex.example.com/security
+    facts:
+      - category: "Security and Privacy"
+        claim: "Globex encrypts customer data at rest and in transit using AES-256"
+        quote: "Globex encrypts all customer data at rest and in transit using AES-256"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"

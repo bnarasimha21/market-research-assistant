@@ -1,0 +1,40 @@
+my_product: Narsi
+competitors:
+  - name: ChatFlow
+    page_file: chatflow.txt
+    url: https://chatflow.example.com/code
+    facts:
+      - category: "Intelligent Code Generation"
+        claim: "ChatFlow writes single file code suggestions from a plain English description"
+        quote: "ChatFlow writes single file code suggestions directly from a plain English description typed into the sidebar"
+      - category: "Pricing and Licensing"
+        claim: "ChatFlow's free tier caps usage at fifty requests per month"
+        quote: "ChatFlow's free tier caps usage at fifty requests per month"
+    no_evidence_categories:
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
+  - name: VoiceWorks
+    page_file: voiceworks.txt
+    url: https://voiceworks.example.com/ux
+    facts:
+      - category: "User Experience"
+        claim: "VoiceWorks lets users dictate commands by voice with live transcription in the editor"
+        quote: "VoiceWorks lets users dictate commands by voice and see live transcription in the editor pane"
+      - category: "Security and Privacy"
+        claim: "VoiceWorks stores voice recordings encrypted on device and never uploads raw audio"
+        quote: "VoiceWorks stores all voice recordings encrypted on device and never uploads raw audio"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"

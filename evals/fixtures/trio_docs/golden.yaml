@@ -1,0 +1,38 @@
+my_product: Narsi
+competitors:
+  - name: DocuBot
+    page_file: docubot.txt
+    url: https://docubot.example.com/learn
+    facts:
+      - category: "Documentation and Learning Resources"
+        claim: "DocuBot provides an interactive tutorial covering every major feature in under ten minutes"
+        quote: "DocuBot provides an interactive tutorial that walks new users through every major feature in under ten minutes"
+      - category: "Natural Language Interface"
+        claim: "DocuBot's natural language interface understands follow up questions in a running conversation"
+        quote: "DocuBot's natural language interface understands follow up questions in a running conversation"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Future Development and Roadmap"
+  - name: LearnStack
+    page_file: learnstack.txt
+    url: https://learnstack.example.com/integrations
+    facts:
+      - category: "Integration Capabilities"
+        claim: "LearnStack connects directly to Slack and Notion"
+        quote: "LearnStack connects directly to Slack and Notion so teams can pull answers without leaving their existing tools"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"

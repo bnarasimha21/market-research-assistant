@@ -1,0 +1,4 @@
+URL: https://voiceworks.example.com/ux
+Fetched: 2026-01-26
+
+VoiceWorks lets users dictate commands by voice and see live transcription in the editor pane. VoiceWorks stores all voice recordings encrypted on device and never uploads raw audio.

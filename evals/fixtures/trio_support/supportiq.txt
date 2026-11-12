@@ -1,0 +1,4 @@
+URL: https://supportiq.example.com/scale
+Fetched: 2026-01-20
+
+SupportIQ auto scales its inference workers to handle sudden traffic spikes without manual intervention. SupportIQ has no information published about its underlying model roadmap.

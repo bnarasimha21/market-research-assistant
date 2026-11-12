@@ -1,0 +1,40 @@
+my_product: Narsi
+competitors:
+  - name: CodeForge
+    page_file: codeforge.txt
+    url: https://codeforge.example.com/features
+    facts:
+      - category: "Intelligent Code Generation"
+        claim: "CodeForge generates multi file code completions from natural language prompts"
+        quote: "CodeForge generates multi file code completions from natural language prompts inside the editor"
+      - category: "Integration Capabilities"
+        claim: "CodeForge integrates with GitHub, GitLab, and Bitbucket"
+        quote: "CodeForge integrates with GitHub, GitLab, and Bitbucket out of the box"
+    no_evidence_categories:
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
+  - name: DevMate
+    page_file: devmate.txt
+    url: https://devmate.example.com/docs
+    facts:
+      - category: "Documentation and Learning Resources"
+        claim: "DevMate ships a full documentation site with searchable guides and video tutorials"
+        quote: "DevMate ships a full documentation site with searchable guides and video tutorials for every feature"
+      - category: "Future Development and Roadmap"
+        claim: "DevMate's public roadmap is updated every quarter"
+        quote: "DevMate's public roadmap is updated every quarter on their website"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Scalability and Performance"

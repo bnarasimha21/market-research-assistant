@@ -1,0 +1,4 @@
+URL: https://devmate.example.com/docs
+Fetched: 2026-01-18
+
+DevMate ships a full documentation site with searchable guides and video tutorials for every feature. DevMate's public roadmap is updated every quarter on their website.

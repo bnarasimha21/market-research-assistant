@@ -1,0 +1,4 @@
+URL: https://chatflow.example.com/code
+Fetched: 2026-01-25
+
+ChatFlow writes single file code suggestions directly from a plain English description typed into the sidebar. ChatFlow's free tier caps usage at fifty requests per month.

@@ -1,0 +1,38 @@
+my_product: Narsi
+competitors:
+  - name: HelpWave
+    page_file: helpwave.txt
+    url: https://helpwave.example.com/support
+    facts:
+      - category: "Community and Support"
+        claim: "HelpWave offers 24 hour community forum support plus a paid tier with 4 hour response times"
+        quote: "HelpWave offers twenty four hour community forum support plus a paid tier with guaranteed four hour response times"
+      - category: "User Experience"
+        claim: "HelpWave's interface uses a single command palette for every action"
+        quote: "HelpWave's interface uses a single command palette for every action"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "Pricing and Licensing"
+      - "Security and Privacy"
+      - "Scalability and Performance"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
+  - name: SupportIQ
+    page_file: supportiq.txt
+    url: https://supportiq.example.com/scale
+    facts:
+      - category: "Scalability and Performance"
+        claim: "SupportIQ auto scales its inference workers to handle sudden traffic spikes"
+        quote: "SupportIQ auto scales its inference workers to handle sudden traffic spikes without manual intervention"
+    no_evidence_categories:
+      - "Intelligent Code Generation"
+      - "Integration Capabilities"
+      - "Natural Language Interface"
+      - "User Experience"
+      - "Pricing and Licensing"
+      - "Community and Support"
+      - "Security and Privacy"
+      - "Documentation and Learning Resources"
+      - "Future Development and Roadmap"
