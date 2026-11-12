@@ -125,6 +125,17 @@ def build_comparison_task(
     )
     product_names = [my_product, *competitor_names]
 
+    # The guardrail only accepts a "supported" cell's source if it matches a
+    # real Fact.source from product_facts. product_block is the product
+    # agent's own free-text report and does not reliably reproduce those
+    # source identifiers verbatim, so the sourced fact list is included here
+    # too, giving the model the exact strings it needs to cite.
+    product_facts_block = (
+        product_facts.as_prompt_block()
+        if product_facts is not None
+        else f"No sourced facts were found for {my_product}."
+    )
+
     # The real fact sources available to this stage for each product: the
     # product's own cited facts (ProductFacts.source) for my_product, and
     # each competitor's grounded claims (CompetitorFact.source_url) for
@@ -144,7 +155,7 @@ def build_comparison_task(
         description=(
             f"Compare \"{my_product}\" against {', '.join(competitor_names)} using the "
             "facts below. Do not use any information other than what is given here.\n\n"
-            f"{product_block}\n\n{competitor_blocks}\n\n"
+            f"{product_block}\n\n{product_facts_block}\n\n{competitor_blocks}\n\n"
             "Return a JSON object with one key \"comparisons\", a list with EXACTLY one "
             "entry per category below, each entry an object with:\n"
             "- \"category\": the category name, copied exactly from this list:\n"

@@ -35,11 +35,23 @@ class StubProductFactsSource:
         )
 
 
-def _full_comparison_reply(product_names: list[str]) -> str:
+def _full_comparison_reply(product_names: list[str], real_sources: dict[str, str]) -> str:
+    """Build a comparison reply whose "sources" are real Fact/CompetitorFact
+    sources (passed in via real_sources), not the fabricated "src:{name}"
+    placeholder the original version of this test used. The comparison
+    guardrail now rejects any "supported" cell whose source does not match
+    a real fact source for that product, so a fabricated source here made
+    this test pass while silently exercising the guardrail-partial path
+    instead of the happy path its name claims to cover.
+    """
     comparisons = []
     for category in CATEGORIES:
         cells = {
-            name: {"text": f"{name} on {category}", "sources": [f"src:{name}"], "status": "supported"}
+            name: {
+                "text": f"{name} on {category}",
+                "sources": [real_sources[name]],
+                "status": "supported",
+            }
             for name in product_names
         }
         comparisons.append({"category": category, "cells": cells})
@@ -63,14 +75,17 @@ def test_full_flow_runs_end_to_end_and_every_category_is_populated(monkeypatch):
         {
             "items": [
                 {
-                    "claim": "Fast onboarding",
+                    "claim": "Acme lets customers get started in minutes",
                     "source_url": "https://acme.com/pricing",
                     "quote": "Get started in minutes",
                 }
             ]
         }
     )
-    comparison_reply = _full_comparison_reply(["Narsi", "Acme"])
+    comparison_reply = _full_comparison_reply(
+        ["Narsi", "Acme"],
+        real_sources={"Narsi": "product_narsi.md#pricing", "Acme": "https://acme.com/pricing"},
+    )
 
     fake = FakeLLM(
         replies={
@@ -91,6 +106,7 @@ def test_full_flow_runs_end_to_end_and_every_category_is_populated(monkeypatch):
 
     recorded_prompts.extend(fake.recorded_prompts)
 
+    assert not flow.state.guardrail_partial, flow.state.missing_categories
     comparison_list = flow.state.comparison
     assert comparison_list is not None
     categories_seen = {c.category for c in comparison_list.comparisons}

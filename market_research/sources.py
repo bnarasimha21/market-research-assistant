@@ -388,9 +388,12 @@ def _claim_and_quote_overlap(claim: str, quote: str, entity_name: str = "") -> b
     platform for teams" on "Acme" alone).
 
     If the claim contains any numeric token (a price, a seat count, a
-    percentage, ...), at least one of those numbers must also appear in
-    the quote: a claim about "$5 per seat" is not supported by a quote
-    that mentions pricing in the abstract but cites no number at all.
+    percentage, ...), every one of those numbers must also appear in the
+    quote: a claim about "$5 per seat" is not supported by a quote that
+    mentions pricing in the abstract but cites no number at all, and a
+    claim bundling a real number with a fabricated one ("$10 per seat
+    with 500 GB storage" against a quote that only confirms "$10 per
+    seat") is not supported just because one of its two numbers matched.
 
     Beyond that, the overlap must cover at least half of the claim's
     remaining substantive tokens (rounded up), so a quote that only
@@ -410,7 +413,7 @@ def _claim_and_quote_overlap(claim: str, quote: str, entity_name: str = "") -> b
     quote_tokens = _substantive_tokens(quote) - entity_tokens
 
     claim_digit_tokens = {t for t in claim_tokens if t.isdigit()}
-    if claim_digit_tokens and not (claim_digit_tokens & quote_tokens):
+    if claim_digit_tokens and not claim_digit_tokens <= quote_tokens:
         return False
 
     overlap = claim_tokens & quote_tokens

@@ -118,6 +118,17 @@ def test_abstract_pricing_mention_without_a_matching_number_does_not_support_a_p
     assert not is_claim_grounded(claim, quote, page_text, "Acme")
 
 
+def test_claim_with_one_real_and_one_fabricated_number_is_rejected():
+    # Round-3 verification gameable case: the claim bundles a real number
+    # with a fabricated one. Requiring only one shared digit let the whole
+    # claim through on the real number's strength alone; every digit in the
+    # claim must now appear in the quote.
+    claim = "Acme Pro is $10 per seat with 500 GB storage"
+    quote = "Acme Pro is $10 per seat with 5 GB storage"
+    page_text = f"{quote} for every plan."
+    assert not is_claim_grounded(claim, quote, page_text, "Acme")
+
+
 def test_well_grounded_claim_with_matching_number_is_accepted():
     claim = "Acme charges $5 per seat per month"
     quote = "Acme Enterprise plans start at $5 per seat per month for teams of any size"
