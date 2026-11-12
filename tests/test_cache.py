@@ -44,3 +44,24 @@ def test_result_cache_key_differs_on_config():
     key1 = result_cache_key("Narsi", ["Acme"], "cfg1")
     key2 = result_cache_key("Narsi", ["Acme"], "cfg2")
     assert key1 != key2
+
+
+def test_result_cache_key_does_not_collide_on_delimiter_injection():
+    """The previous implementation joined every field with "|" before
+    hashing one combined string, so a "|" inside a product/competitor name
+    could make two genuinely different inputs produce the exact same joined
+    string: my_product="a|b", competitors=["c"] joined to "a|b|c", the same
+    as my_product="a", competitors=["b", "c"]. Hashing each field first
+    (result_cache_key) must keep these apart.
+    """
+    key1 = result_cache_key("a|b", ["c"], "cfg")
+    key2 = result_cache_key("a", ["b", "c"], "cfg")
+    assert key1 != key2
+
+
+def test_result_cache_key_differs_on_field_count():
+    """A 2-field vs 3-field input must never coincide even if some future
+    hash-joining scheme accidentally made the per-field digests line up."""
+    key1 = result_cache_key("a", ["b"], "cfg")
+    key2 = result_cache_key("a", ["b", ""], "cfg")
+    assert key1 != key2

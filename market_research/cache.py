@@ -1,10 +1,10 @@
 """Disk cache for fetched pages and final results so repeats are free.
 
 Two independent caches, both plain JSON files under .cache/ (gitignored):
-pages (key: URL, TTL default 24h) and results (key: normalized names +
-config hash, no TTL -- a result is only replaced by a fresh run request,
-never expires on its own since nothing about a product/competitor pairing
-goes stale on a timer the way a fetched page does).
+pages (key: URL, TTL default 24h) and results (key: a per-field hash of
+normalized names plus a config hash, TTL also 24h -- see
+`result_cache_key` for why this changed from a raw joined string with no
+expiry).
 """
 
 from __future__ import annotations
@@ -17,6 +17,14 @@ from typing import Any
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / ".cache"
 PAGE_TTL_SECONDS = 24 * 60 * 60
+# A cached comparison result can go stale for reasons the config hash
+# doesn't capture (a competitor's real-world pricing page changes, a
+# provider silently updates a model behind the same model id) even though
+# nothing about the pipeline's own config changed. Reusing the same 24h
+# window as the page cache bounds that staleness instead of a result being
+# served forever (the previous behaviour, `ttl_seconds=None`) until someone
+# notices and manually clears .cache/.
+RESULT_TTL_SECONDS = 24 * 60 * 60
 
 
 def _hash_key(key: str) -> str:
@@ -62,9 +70,29 @@ def pages_cache() -> DiskCache:
 
 
 def results_cache() -> DiskCache:
-    return DiskCache("results", ttl_seconds=None)
+    return DiskCache("results", ttl_seconds=RESULT_TTL_SECONDS)
 
 
 def result_cache_key(my_product: str, competitors: list[str], config_hash: str) -> str:
-    normalized = "|".join([my_product.strip().lower(), *(c.strip().lower() for c in competitors)])
-    return f"{normalized}::{config_hash}"
+    """Build a collision-resistant cache key for one (my_product,
+    competitors, config) combination.
+
+    The previous version joined every field into one "|"-separated string
+    before hashing: `"|".join([my_product, *competitors])`. Because "|" can
+    appear inside a product/competitor name, that join is ambiguous --
+    my_product="a|b", competitors=["c"] produces the exact same joined
+    string ("a|b|c") as my_product="a", competitors=["b|c"], and
+    competitors=["c"] (one entry containing no pipe) collides with
+    competitors=["b", "c"] losing the "a" vs "a|b" distinction once both
+    sides are flattened the same way. Hashing each field to a fixed-width
+    sha256 hex digest BEFORE joining removes the ambiguity: no field's
+    content can ever be mistaken for a delimiter between two other fields,
+    since the only things being joined are already-fixed-length hex
+    strings, not the original free-form text.
+    """
+    fields = [my_product.strip().lower(), *(c.strip().lower() for c in competitors), config_hash]
+    digest_of_fields = ":".join(_hash_key(field) for field in fields)
+    # The field count is folded in too so a 2-field vs 3-field input can
+    # never coincide even in some currently-unforeseen hash-joining edge
+    # case; this is defense in depth on top of the fixed-width hashing above.
+    return _hash_key(f"{len(fields)}:{digest_of_fields}")

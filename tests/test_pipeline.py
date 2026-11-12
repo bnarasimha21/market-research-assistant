@@ -133,3 +133,76 @@ def test_repeat_run_hits_the_result_cache(tmp_path, monkeypatch):
     second = _run("Narsi", ["Acme"], use_cache=True)
     assert second.from_cache
     assert second.comparisons == first.comparisons
+
+
+def test_cache_hit_is_flagged_on_the_returned_trace(tmp_path, monkeypatch):
+    """RunTrace.cache_hit existed on the model but nothing ever set it to
+    True; a caller reading the trace in isolation (not ComparisonResult.
+    from_cache) could never tell a cached result from a fresh one."""
+    import market_research.pipeline as pipeline_mod
+    from market_research.cache import DiskCache
+
+    monkeypatch.setattr(pipeline_mod, "results_cache", lambda: DiskCache("results", ttl_seconds=None, root=tmp_path))
+
+    first = _run("Narsi", ["Acme"], use_cache=True)
+    assert first.trace.cache_hit is False
+
+    second = _run("Narsi", ["Acme"], use_cache=True)
+    assert second.from_cache
+    assert second.trace.cache_hit is True
+
+
+def test_force_refresh_skips_the_cache_even_when_use_cache_is_true(tmp_path, monkeypatch):
+    import market_research.pipeline as pipeline_mod
+    from market_research.cache import DiskCache
+
+    monkeypatch.setattr(pipeline_mod, "results_cache", lambda: DiskCache("results", ttl_seconds=None, root=tmp_path))
+
+    reply = _comparison_reply_for("Narsi", ["Acme"])
+    llm = FakeLLM(
+        replies={
+            "Product Researcher": "report for Narsi",
+            "Competitor Analyst": '{"items": []}',
+            "Comparison Report Generator": reply,
+        }
+    )
+    inputs = ResearchInput(my_product="Narsi", competitors=["Acme"])
+    first = run_comparison(inputs, llm=llm, use_cache=True, search_backend=FixtureSearch({}))
+    assert not first.from_cache
+
+    second = run_comparison(
+        inputs, llm=llm, use_cache=True, force_refresh=True, search_backend=FixtureSearch({})
+    )
+    assert not second.from_cache, "force_refresh=True must bypass the cache lookup"
+
+
+def test_guardrail_partial_result_is_never_written_to_the_cache(tmp_path, monkeypatch):
+    """A forced-partial result (guardrail retries exhausted, placeholders
+    patched in) must never be cached as if it were a complete success: that
+    would serve the same known-partial table to every identical request for
+    RESULT_TTL_SECONDS instead of letting a later run retry for a complete
+    one. The comparison stage always returns an empty object here, which
+    the guardrail can never accept, so every attempt is exhausted and the
+    final attempt is forced into a partial result.
+    """
+    import market_research.pipeline as pipeline_mod
+    from market_research.cache import DiskCache
+
+    cache = DiskCache("results", ttl_seconds=None, root=tmp_path)
+    monkeypatch.setattr(pipeline_mod, "results_cache", lambda: cache)
+
+    llm = FakeLLM(
+        replies={
+            "Product Researcher": "report for Narsi",
+            "Competitor Analyst": '{"items": []}',
+            "Comparison Report Generator": "{}",
+        }
+    )
+    inputs = ResearchInput(my_product="Narsi", competitors=["Acme"])
+    result = run_comparison(inputs, llm=llm, use_cache=True, search_backend=FixtureSearch({}))
+
+    assert result.guardrail_partial
+    from market_research.cache import result_cache_key
+
+    key = result_cache_key(inputs.my_product, inputs.competitors, pipeline_mod._config_hash())
+    assert cache.get(key) is None
